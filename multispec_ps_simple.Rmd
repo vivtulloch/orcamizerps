@@ -1,0 +1,34 @@
+---
+title: "Build simple mizer model for puget sound from Atlantis pars"
+author: "Viv Tulloch"
+date: "2023-06-20"
+output: html_document
+---
+
+## Create a mizer model
+
+```{r message=FALSE}
+remotes::install_github("sizespectrum/mizerExperimental")
+```
+
+```{r message=FALSE}
+library(mizer)
+library(tidyverse)
+```
+
+**Step 1: Create a MizerParams object**
+
+```{r}
+curonian_species_params <- read.csv("C:/Users/vtulloch/Dropbox/UBC/Projects/Orca_salmon_modelling/07_sizespectra/Course/curonian_species_params.csv")
+
+curonian_interaction <- read.csv("C:/Users/vtulloch/Dropbox/UBC/Projects/Orca_salmon_modelling/07_sizespectra/Course/curonian_interaction.csv", row.names = 1)
+```
+
+Set up a multi-species mizer model - let mizer choose defaults for resource parameters and gear parameters. Set fishing effort to 0.3 (fishing mortality of 0.3 per year on those fish).
+
+
+```{r}
+#Save model to github as RDS
+saveParams(cur_model, "cur_model_coarse.rds")
+```
+
