@@ -1,0 +1,324 @@
+---
+title: "Orca_tuneparams_Nov2023"
+author: "Viv Tulloch"
+date: "2023-11-21"
+output: html_document
+---
+
+
+https://course.mizer.sizespectrum.org/build/find-species-parameters.html
+
+## Create a mizer model
+
+```{r message=FALSE}
+remotes::install_github("sizespectrum/mizerExperimental")
+library(mizerExperimental)
+remotes::install_github("sizespectrum/mizerMR")
+library(mizerMR)
+library(tidyverse)
+#rm(cur_model_steady)
+```
+
+
+
+```{r}
+#Save model to github as RDS
+#cm_tuned <-readParams("C:/~/orcamizerps/cur_model_addorca_231103_fitted_addorca.rds")
+#species_params(params) |> select(erepro)
+
+```
+
+
+
+```{r FALSE}
+#remotes::install_github('sizespectrum/mizerExperimental', ref = 'tuneMR')
+#library(mizerExperimental)
+tuneParams(cm_tuned)
+```
+
+```{r}
+library(plotly)
+library(tictoc)
+library(shiny)
+library(shinyWidgets)
+library(parallel)
+library(optimParallel)
+library(ggrepel)
+```
+
+
+# read in new tuned crab bivalves and seal
+
+```{r}
+#oprn model 
+cm_tuned <-readParams("C:/~/orcamizerps_upd/tuned_params_231122_addedfishing_upd.rds")
+
+
+## interaction matrix set to 0,1 - need to modify this based on prey preferences
+inter <- 
+  read.csv(
+    "C:/Users/vtulloch/Dropbox/UBC/Projects/Orca_salmon_modelling/07_sizespectra/Viv_sizespectra_model/Puget_Sound/spp_Aug2023_CM/ps_mizer_interaction_231110_6.csv", row.names=1)
+
+species_params(cm_tuned) |> select(erepro, R_max, w_inf)
+
+```
+
+
+```{r}
+# This data frame already has Rmax values, let’s remove them to calibrate them again later
+psParams <-cm_tuned
+psParams@species_params$R_max <- Inf
+
+# ordering by asymptotic size for color gradient
+#psParams <- psParams[order(psParams$w_inf),]
+
+# need to order the interaction matrix as well | it’s so ugly please help
+#inter <- select(as.data.frame(inter),psParams$species)
+#inter <- as.matrix(select(as.data.frame(t(inter)),psParams$species))
+
+params_uncalibrated <- newMultispeciesParams(species_params = species_params(psParams), 
+                                   interaction = inter, 
+                                  # initial_effort = 0.1,
+                                   #lambda = 2.05, n=0.75,  p = 0.75, w_pp_cutoff = 100, 
+                                  kappa = 1e11)
+
+```
+```{r}
+params_uncalibrated@species_params$erepro <- 1e-3
+species_params(params_uncalibrated)#
+```
+
+
+
+
+
+kapp = 33911829949.3564
+
+
+### A Simple Protocol for Multispecies Model Calibration
+
+We will adapt the "recipe" for calibration in Jacobsen et al 2014 (see supp. mat.) and Blanchard et al (2014), into the following steps:
+
+
+0. Run the model with the chosen species-specific parameters. This will relate some of the missing paramsters to \Winf. \Rmax will also be automatically calculated based on equilbrium assumptions (Andersen et al. 2016).
+
+1. Obtain the time-averaged data (e.g. catches or biomasses for each species) and the time-averaged fishing mortalty inputs (e.g. from stock assessments). Typically this should be over a stable part of the time series for your system.
+
+2. Calibrate the carrying capacity of the background resource spectrum, \kappa, by minimising the error between the modelled and observed  abundance, biomass or catches. Typically this is for each species but below we will do this using the empirical community size spectrum, as in the above example.
+
+3. Calibrate the maximum recruitment, \Rmax, which will affect the relative biomass of each species (and, combined with the fishing parameters, the catches) by minimising the error between observed and estimated catches (again or biomasses).
+
+4. Check that the physiological recruitment, \RDI, is much higher than the realised recruitment, \RDD. This can be done using the getRDD and getRDI functions and calculating the ratio which should be around 100  for a specis with \Winf = 1500 g, but varies with asymptotic size and fishing mortality (Andersen 2019). High RDI/RDD ratio indicates the carrying capacity is controlling the population rather than predation or competition. Larger species often require more of this density dependent control than smaller ones. If RDI/RDD is too high, the efficiency of reproduction (erepro) can be lowered to ensure species do not outcompete others or or over-resilient to fishing. Lowering erepro biologically means higher egg mortality rate or wasteful energy invested into gonads. If RDI/RDD = 1 the species is in the linear part of the stock recruitment relationship (no spawner-recruit density dependence).
+
+5. Verify the model after the above step by comparing the model with: species biomass or abundance distrubtions, feeding level, naturality mortality, growth, vulnerablity to fishing (fmsy) and catch, diet composition. Many handy functions for plotting these are available here: https://sizespectrum.org/mizer/reference/index.html
+
+6. The final verification step is to force the model with time-varying fishing mortality to assess whether changes in time series in biomassess and catches capture observed trends. The model will not cpature all of the fluctuations from environmental processes (unless some of these are included), but should match the magnitude and general trend in the data.
+
+
+#### Step 1. Obtain the time-averaged data (e.g. catches or biomasses for each species) and the time-averaged fishing mortalty inputs (e.g. from stock assessments). Typically this should be over a stable part of the time series for your system.
+
+
+```{r}
+
+params<-cm_tuned
+#params @species_params$biomass_observed[1]<-10498520000 # increase zooplankton
+#params @species_params$biomass_observed[8]<-4992045380  #fix chum
+
+
+#read in time-averaged  catches  
+cdat<-read.csv(
+  "C:/Users/vtulloch/Dropbox/UBC/Projects/Orca_salmon_modelling/07_sizespectra/Viv_sizespectra_model/Puget_Sound/spp_Aug2023_CM/fisheries/ts_fisheries_rev_avyield.csv") ### units: tonnes
+
+# the fishing moratlty rates are already stored in the param object as
+#params@species_params$catchability<-cdat$catchability
+#params@species_params$catchability
+
+#saveParams(params, "tuned_params_231122_addedfishing_upd.rds")
+
+
+# let's start again and replace with the initial pre-calibration "guessed" Rmax and Kappa
+params@resource_params$kappa = 33911829949.3564
+# penalise the large species with higher density dependence
+params@species_params$R_max <- params@resource_params$kappa*params@species_params$w_inf^-1
+# and reduce erepro
+params@species_params$erepro[]<- 1e-3
+
+params <- setParams(params)
+```
+
+```{r}
+species_params(params) |> select(biomass_observed)
+
+
+# run without fishing
+sim <- project(params, t_max = 100, effort =0, t_save=3)
+
+plot(sim)
+animateSpectra(sim, total = TRUE, power = 1)#, 
+               #ylim = c(1e-8, NA), wlim = c(1e-3, NA))
+
+species_params(params) 
+
+```
+
+Species are coexisting. This is in part because we applied a stronger  Rmax effect for larger species. You can play with the above parameters but but it would take a lot of trial an error to achieve the right combination to get the biomass or catches similar to the observations.
+
+ - but pinnipeds are being outcompeted????
+
+#### Step 2. Calibrate the carrying capacity of the background resource spectrum, \kappa, by minimising the error between the modelled and observed  abundance, biomass or catches. 
+
+We could explore the effects further using Rshiny app, where we also have a plot of the biomass or catch data. First lets' look at the basic diagnostics and tune kappa and erepro to make sure the feeding levels are high enough for each species. 
+
+
+```{r}
+plotBiomassVsSpecies(params)
+cur_model <- calibrateBiomass(params)
+#cur_model <- matchBiomasses(cur_model)
+plotBiomassVsSpecies(cur_model)
+#tuneParams(params)
+# is there a way to save the final chosen values?
+params@resource_params$kappa
+```
+Let's choose some values that enable the most species to coexist as a starting point for optimisation. Note we won't vary erepro at the same time as Rmax (they depend on each other). However we will use the value of erepro selected for tuneParams.
+
+
+
+```{r}
+# run without fishing
+sim2 <- project(cur_model, t_max = 100, effort =0, t_save=3)
+
+plot(sim2)
+animateSpectra(sim2, total = TRUE, power = 1)#, 
+               #ylim = c(1e-8, NA), wlim = c(1e-3, NA))
+
+ 
+```
+try a bigger kappa? 38911829949.3564
+
+
+> cur_model@resource_params$kappa
+[1] 45062646192
+[2] 33911829949
+
+#### Step 3. Calibrate the maximum recruitment, \Rmax, which will affect the relative biomass of each species (and, combined with the fishing parameters, the catches) by minimising the error between observed and estimated catches or biomasses. We could also include kappa in our estimation here (as in Blanchard et al 2104 & Spence et al 2016) but instead we will use the value that seemed OK in terms of feeding levels in the shiny app, roughly log10(11.5). Same goes for erepro, a value of 1e-2 seemed ok.
+
+try the course method
+
+```{r}
+tuneParams(params)
+#getReproductionLevel(params)
+#species_params(params) |> select(erepro)
+getRDI(params)/getRDD(params)
+
+```
+
+
+
+This might take AWHILE. Go watch some Netflix.
+
+```{r}
+
+
+# change kappa and erepro based on shiny epxloration
+ params@species_params$erepro[] <-1e-3
+  params <- setParams(params,kappa=33911829949.3564)
+
+# define the initial parameters to send to optimisation code below
+
+# we need 12 Rmaxs, log10 scale
+vary <- log10(1000*params@resource_params$kappa*params@species_params$w_inf^-1)
+#vary<-runif(10,3,22) # or use completley made up values, same for each species test for effects of initial values
+
+#the following getError function combines the steps of the optimisastion above - this time with the multispecies model and output the predicted size spectrum
+
+getError <- function(vary,params=initparam,dat=cdat$yield_observed,data_type="catch",timetorun=100) {
+  params@species_params$R_max[]<-10^vary[1:22]
+  sim <- project(params, effort = 1, t_max = timetorun, dt=0.1)
+          ## what kind of data and output do we have?
+          if (data_type=="Biomass") {
+          output <-getBiomass(sim)[timetorun,]   #could change to getBiomass if appropriate, also check units.
+          }
+          #if (data_type=="catch") {
+         #output <-getYield(sim)[timetorun,]*1e6 #### CHECK UNITS !! grams per year? the data are in tonnes per year so converting to tonnes.
+         # }
+  pred <- log(output)
+  dat  <- log(dat)
+
+  # sum of squared errors, here on log-scale of predictions and data (could change this or use other error or likelihood options)
+   discrep <- pred - dat
+
+   discrep <- (sum(discrep^2))
+  
+  # can use a strong penalty on the error to ensure we reach a minimum of 10% of the data (biomass or catch) for each species
+  #if(any(pred < 0.1*dat)) discrep <- discrep + 1e10
+  
+    return(discrep)
+
+   }
+
+## test it
+
+initparams <- params
+
+#err<-getError(vary,params,dat=cdat$yield_observed,data_type="catch")
+#err
+err<-getError(vary,params,dat=rep(100,22),data_type="biomass")
+#test
+err
+
+
+
+# this time carry out optimisation, using optim(), with catches
+vals<-optim(par=vary,getError,params=initparams,method ="L-BFGS-B",lower=c(rep(3,22)),upper= c(rep(20,22)))
+
+
+
+# plug back into model
+# make sure kappa and erepro are the same
+params@species_params$erepro[] <-1e-4
+params <- setParams(params,kappa=33911829949.3564)
+# optim values:
+params@species_params$R_max <- 10^vals$par[1:22] 
+# set the param object
+params<-setParams(params)
+sim <- project(params, effort = 1, t_max = 500, dt=0.1)
+plot(sim)
+
+# and without fishing?
+sim_uf <- project(params, effort = 0, t_max = 500, dt=0.1)
+plot(sim_uf)
+
+# save vals - may want to repeat this setp depending on diagnostics, after changing some parameters
+saveRDS(vals,"optim_vals.RDS")
+
+# save params - may want to repeat this setp depending on diagnostics, after changing some parameters
+saveRDS(params,"optim_param.RDS")
+saveRDS(sim,"optim_sim.RDS")
+
+
+```
+
+
+
+
+#### Step 4. Check that the physiological recruitment, \RDI, is much higher than the realised recruitment, \RDD. High RDI/RDD ratio.
+
+
+
+
+```{r}
+#params<- readRDS("optim_param.RDS")
+#sim <- readRDS("optim_sim.RDS")
+getRDI(cm_tuned)/getRDD(cm_tuned)
+
+# seems like the right ballpark according to protocal
+
+params2<-cm_tuned
+
+# # if needed change erepro & plug back into model
+ params2@species_params$erepro[] <-1e-3
+ params2 <- setParams(params2)
+ sim2 <- project(params2, effort = 1, t_max = 100, dt=0.1)
+ plot(sim2)
+
+```

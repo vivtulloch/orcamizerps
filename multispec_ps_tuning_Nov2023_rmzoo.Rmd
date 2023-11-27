@@ -1,0 +1,444 @@
+---
+title: "Orca_tuneparams_Nov2023"
+author: "Viv Tulloch"
+date: "2023-11-21"
+output: html_document
+---
+
+
+https://course.mizer.sizespectrum.org/build/find-species-parameters.html
+
+## Create a mizer model
+
+```{r message=FALSE}
+remotes::install_github("sizespectrum/mizerExperimental")
+library(mizerExperimental)
+remotes::install_github("sizespectrum/mizerMR")
+library(mizerMR)
+library(tidyverse)
+#rm(cur_model_steady)
+```
+
+
+
+# read in new tuned model no zooplankton
+
+```{r}
+#oprn model 
+ps_species_params <-   read.csv(
+  "C:/Users/vtulloch/Dropbox/UBC/Projects/Orca_salmon_modelling/07_sizespectra/Viv_sizespectra_model/Puget_Sound/spp_Aug2023_CM/tuned/ps_speciesparams_231123_rmzoo2.csv")
+
+
+## interaction matrix set to 0,1 - need to modify this based on prey preferences
+ps_interaction <- 
+  read.csv(
+    "C:/Users/vtulloch/Dropbox/UBC/Projects/Orca_salmon_modelling/07_sizespectra/Viv_sizespectra_model/Puget_Sound/spp_Aug2023_CM/tuned/ps_mizer_interaction_231123_rmzoo2.csv", row.names=1)
+
+
+```
+
+
+```{r}
+cur_model <- newMultispeciesParams(species_params = ps_species_params, 
+                                   interaction = ps_interaction, 
+                                  # initial_effort = 0.1,
+                                   lambda = 2.05, n=0.75,  p = 0.75, w_pp_cutoff = 50, kappa = 1e11
+                                   )
+```
+
+```{r}
+#resource_params(cur_model)
+#species_params(cur_model) |> select(w_inf, w_max, w_mat, l_inf, l_max, age_mat, w_min)
+
+cur_model@species_params$erepro=1e-3
+cur_model@species_params$erepro[20]= 4
+#cur_model@species_params$R_max[21]= 1.019131638
+#cur_model@species_params$ks[21]=18.66	
+#cur_model@species_params$gamma[21]=4.08E-09
+#cur_model@species_params$sigma[21]=4
+
+
+species_params(cur_model)
+
+```
+
+**Step 2: Project to steady state**
+
+```{r}
+#rm(cur_model_steady)
+cur_model_steady <- steady(cur_model)
+species_params(cur_model_steady)
+plotlySpectra(cur_model_steady, power = 2)
+```
+
+**Step 3: Calibrate the scale**
+
+```{r}
+cur_model <- calibrateBiomass(cur_model_steady)
+plotBiomassVsSpecies(cur_model)
+```
+
+**Step 4: Rescale species spectra**
+
+```{r}
+cur_model <- matchBiomasses(cur_model)
+plotBiomassVsSpecies(cur_model)
+species_params(cur_model)
+```
+
+Step 5: Rinse and repeat
+
+Rescaling the spectra of the individual species has not created another steady state. All species now experience a new prey distribution and a new predator distribution and so their growth and death rates have changed, which requires us to run the dynamics again to find the new steady state. So we essentially go back to step 2 and project to steady state:
+
+
+```{r}
+cur_model <- steady(cur_model)
+plotBiomassVsSpecies(cur_model)
+species_params(cur_model) |> select(erepro)
+```
+
+
+```{r}
+cur_model <- cur_model |>
+     matchBiomasses() |> steady() |> matchBiomasses() |> steady() |>
+   matchBiomasses() |> steady() |> matchBiomasses() |> steady() 
+```
+
+
+
+```{r}
+cur_model <- cur_model |>
+  matchBiomasses() |> steady() |> matchBiomasses() |> steady() |>
+   matchBiomasses() |> steady() |> matchBiomasses() |> steady() |>
+  matchBiomasses() |> steady() |> matchBiomasses() |> steady() |>
+    matchBiomasses() |> steady() |> matchBiomasses() |> steady() #|>
+    #matchBiomasses() |> steady() |> matchBiomasses() |> steady() 
+
+```
+
+
+```{r}
+#plotBiomassVsSpecies(cur_model)
+plotSpectra(cur_model, power = 1
+            
+            )
+
+```
+
+plot works? YAAAAAAAAAAAAA
+
+```{r}
+
+#plotDiet(cur_model, species = "California_sea_lions")
+plotGrowthCurves(cur_model, species_panel = TRUE)
+getReproductionLevel(cur_model)
+```
+
+```{r}
+#remotes::install_github('sizespectrum/mizerExperimental', ref = 'tuneMR')
+#library(mizerExperimental)
+tuneParams(cur_model)
+```
+
+
+
+
+
+##################### TUNING!!!!!!!!!!!!!!!!!!!!!!!!!!
+
+```{r}
+##tuning 23 nov 2023
+
+#species_params(cur_model)
+species_params(tuned_params2)
+tuned_params2@species_params$erepro=1e-3
+tuned_params2@species_params$gamma[4]=2.689559e-10
+tuned_params2@species_params$w_inf[4]=638.937
+tuned_params2@species_params$k_vb[4]=0.417
+tuneParams(tuned_params2)
+```
+
+```{r}
+saveParams(cur_model, "cur_model_231109_nofishing_6.rds")
+df1<-(species_params(cur_model))
+write.csv(df1, "C:/Users/vtulloch/Dropbox/UBC/Projects/Orca_salmon_modelling/07_sizespectra/Viv_sizespectra_model/Puget_Sound/spp_Aug2023_CM/ps_mizeroutput_speciesparams_231109_nofishing_6.csv")
+```
+
+
+```{r}
+#Save model to github as RDS
+saveParams(cur_model, "cur_model_addorca_231109_fitted_nofishing_tuneparams.rds")
+
+```
+
+
+
+
+
+
+
+
+
+############LOADING TUNED PARS #####################
+
+
+```{r}
+#Save model to github a
+
+tuned_params3<- `tuned_params (25)`
+species_params(tuned_params3)
+#(cur_model, "cur_model_addorca_231109_fitted_nofishing_tuneparams.rds")
+
+df2<-(species_params(tuned_params3))
+write.csv(df2, "C:/Users/vtulloch/Dropbox/UBC/Projects/Orca_salmon_modelling/07_sizespectra/Viv_sizespectra_model/Puget_Sound/spp_Aug2023_CM/tuned/ps_mizeroutput_speciesparams_231123_nofishing_tuneparams.csv")
+
+```
+
+
+
+
+###Step 5: explore model properties####
+Let’s check the diets and see if we can now observed ontogenetic diet shifts.
+
+
+```{r}
+plotDiet(tuned_params3)
+plotDeath(tuned_params3)
+
+```
+
+
+
+
+
+```{r}
+tuned_params3@resource_params$kappa
+#tuned_params3@species_params[,-22]
+
+test<-read.csv(
+  "C:/Users/vtulloch/Dropbox/UBC/Projects/Orca_salmon_modelling/07_sizespectra/Viv_sizespectra_model/Puget_Sound/spp_Aug2023_CM/tuned/ps_speciesparams_231123_nofishing_tuneparams_inputtest.csv")
+
+input_params<-newMultispeciesParams(species_params = test, 
+                                   interaction = ps_interaction, 
+                                  # initial_effort = 0.1,
+                                   lambda = 2.05, n=0.75,  p = 0.75, w_pp_cutoff = 50, kappa=  19166771044)
+
+#params4 <- setParams(input_params)
+testpars<- steady(input_params)
+testpars <- calibrateBiomass(testpars)
+testpars  <- testpars |>
+     matchBiomasses() |> steady() |> matchBiomasses() |> steady() |>
+   matchBiomasses() |> steady() |> matchBiomasses() |> steady()  |>
+   matchBiomasses() |> steady() |> matchBiomasses() |> steady()  |>
+   matchBiomasses() |> steady() |> matchBiomasses() |> steady() |>
+   matchBiomasses() |> steady() |> matchBiomasses() |> steady() 
+plotlySpectra(testpars, power = 2)
+plotGrowthCurves(testpars, species_panel = TRUE)
+getReproductionLevel(testpars)
+plotDiet(testpars)
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+```{r}
+species_params(testpars) |> select(z0)
+
+```
+
+
+```{r}
+#species_params(params4) |> select(biomass_observed)
+
+# run without fishing
+sim <- project(testpars, t_max = 100, effort =1, t_save=3)
+
+plot(sim)
+animateSpectra(sim, total = TRUE, power = 1)#, 
+               #ylim = c(1e-8, NA), wlim = c(1e-3, NA))
+
+#species_params(params4) 
+
+
+
+```
+
+### SAVE BEST MODEL!!!!!
+
+```{r}
+saveParams(testpars, "bestmodel_231124_nofishing_tuneparams.rds")
+df1<-(species_params(testpars))
+write.csv(df1, "C:/Users/vtulloch/Dropbox/UBC/Projects/Orca_salmon_modelling/07_sizespectra/Viv_sizespectra_model/Puget_Sound/spp_Aug2023_CM/tuned/ps_mizeroutput_speciesparams_231124_nofishing_bestmodel.csv")
+```
+
+
+
+
+
+
+
+### CHANGING z0 to defaults?
+
+
+#plotDeath(cur_model, proportion = T)
+
+
+```{r}
+
+
+```
+
+
+
+```{r}
+plotGrowthCurves(tuned_params3, species_panel = TRUE)
+plotFeedingLevel(tuned_params3)
+plotResourcePred(tuned_params3, proportion = T)
+getReproductionLevel(tuned_params3)
+```
+
+
+
+```{r}
+plotYieldVsSpecies(tuned_params3)
+#cur_modelf <- calibrateYield(cur_model)
+```
+
+
+### 1. Project forward with no fishing
+
+```{r}
+ cm_tuned <-tuned_params3
+
+sim_nf_t30<-project(cm_tuned,effort=0
+            ,t_max=50,t_save=3)
+plot(sim_nf_t30)
+
+# We animate the result
+animateSpectra(sim_nf_t30, total = TRUE, power = 1)#, 
+               #ylim = c(1e-8, NA), wlim = c(1e-3, NA))
+
+plotlyBiomassRelative(sim_nf_t30)
+```
+
+
+
+
+#### Step 4. Check that the physiological recruitment, \RDI, is much higher than the realised recruitment, \RDD. High RDI/RDD ratio.
+
+
+```{r}
+#getRDI(cm_tuned)
+#getRDD(cm_tuned)
+getReproductionLevel(tuned_params3)
+#getRDI(cm_tuned)/getRDD(cm_tuned)
+```
+
+
+######### TRYING TO FIX RMAX
+
+```{r}
+cur_model<-steady(tuned_params3)
+cur_model <- setBevertonHolt(cur_model, erepro = 0.001)
+cur_model<-steady(cur_model)
+species_params(cur_model)
+```
+
+
+
+
+
+## We use the setBevertonHolt() function to set the values for erepro. That function automatically also adjusts the values for R_max to keep the steady state reproduction rate  the same, as we discussed above.
+
+```{r}
+cm <- setBevertonHolt(tuned_params3, erepro = 0.001)
+species_params(cm) |> select(z0,erepro, R_max)
+getReproductionLevel(cm)
+getRDI(cm) / getRDD(cm)
+```
+
+#### Step 4. Check that the physiological recruitment, \RDI, is much higher than the realised recruitment, \RDD. High RDI/RDD ratio.
+
+```{r}
+# seems like the right ballpark according to protocal
+
+# # if needed change erepro & plug back into model
+ cm@species_params$erepro[] <-1e-3
+ cm <- setParams(cm)
+ sim2 <- project(cm, effort = 0, t_max = 50, dt=0.1)
+ plot(sim2)
+
+```
+
+
+```{r}
+remotes::install_github('sizespectrum/mizerExperimental', ref = 'tuneMR')
+library(mizerExperimental)
+tuneParams(cur_model)
+```
+
+
+
+```{r}
+plotGrowthCurves(tuned_params, species_panel = TRUE)
+getReproductionLevel(tuned_params)
+```
+
+
+
+```{r}
+saveParams(cm, "cur_model_231123_nofishing_tuneparams.rds")
+df1<-(species_params(cm))
+write.csv(df1, "C:/Users/vtulloch/Dropbox/UBC/Projects/Orca_salmon_modelling/07_sizespectra/Viv_sizespectra_model/Puget_Sound/spp_Aug2023_CM/tuned/ps_mizeroutput_speciesparams_231123_nofishing_tuneparams1.csv")
+```
+
+
+```{r}
+#Save model to github as RDS
+saveParams(tuned_params, "cur_model_addorca_231109_fitted_nofishing_6tuneparams.rds")
+
+```
+
+
+
+```{r}
+#remotes::install_github('sizespectrum/mizerExperimental', ref = 'tuneMR')
+#library(mizerExperimental)
+tuneParams(tuned_params)
+```
+
+
+
+ATLANTIS MODEL TUNING
+
+
+### 1. Project forward with no fishing
+
+```{r}
+ cm_tuned <-tuned_params3
+
+sim_nf_t30<-project(cm_tuned,effort=0
+            ,t_max=50,t_save=3)
+plot(sim_nf_t30)
+
+# We animate the result
+animateSpectra(sim_nf_t30, total = TRUE, power = 1)#, 
+               #ylim = c(1e-8, NA), wlim = c(1e-3, NA))
+
+plotlyBiomassRelative(sim_nf_t30)
+```
+
+
+

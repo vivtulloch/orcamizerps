@@ -1,0 +1,1677 @@
+---
+title: "Build simple mizer model for puget sound from Atlantis pars"
+author: "Viv Tulloch"
+date: "2023-06-20"
+output: html_document
+---
+
+https://course.mizer.sizespectrum.org/build/find-species-parameters.html
+
+## Create a mizer model
+
+```{r message=FALSE}
+remotes::install_github("sizespectrum/mizerExperimental")
+library(mizerExperimental)
+remotes::install_github("sizespectrum/mizerMR")
+library(mizerMR)
+library(tidyverse)
+rm(cur_model_steady)
+```
+
+
+**Step 1: Create a MizerParams object**
+
+```{r}
+ps_species_params <-   read.csv(
+  "C:/Users/vtulloch/Dropbox/UBC/Projects/Orca_salmon_modelling/07_sizespectra/Viv_sizespectra_model/Puget_Sound/spp_Aug2023_CM/ps_mizer_params_addorca_addpars_modmamms_231103_6.csv")
+
+  
+## interaction matrix set to 0,1 - need to modify this based on prey preferences
+ps_interaction <- 
+  read.csv(
+    "C:/Users/vtulloch/Dropbox/UBC/Projects/Orca_salmon_modelling/07_sizespectra/Viv_sizespectra_model/Puget_Sound/spp_Aug2023_CM/ps_mizer_interaction_test3_simple_migsalm_231103_4.csv", row.names=1)
+
+```
+
+```{r}
+cur_model <- newMultispeciesParams(species_params = ps_species_params, 
+                                   interaction = ps_interaction, 
+                                  # initial_effort = 0.1,
+                                   lambda = 2.05, n=0.75,  p = 0.75, w_pp_cutoff = 100, kappa = 1000000000000
+                                   )
+```
+
+```{r}
+#resource_params(cur_model)
+#species_params(cur_model) |> select(w_inf, w_max, w_mat, l_inf, l_max, age_mat, w_min)
+species_params(cur_model)
+```
+
+**Step 2: Project to steady state**
+
+```{r}
+#rm(cur_model_steady)
+cur_model_steady <- steady(cur_model)
+species_params(cur_model_steady)
+plotlySpectra(cur_model_steady, power = 2)
+```
+
+**Step 3: Calibrate the scale**
+
+```{r}
+cur_model <- calibrateBiomass(cur_model_steady)
+plotBiomassVsSpecies(cur_model)
+```
+
+**Step 4: Rescale species spectra**
+
+```{r}
+cur_model <- matchBiomasses(cur_model)
+plotBiomassVsSpecies(cur_model)
+species_params(cur_model)
+```
+
+Step 5: Rinse and repeat
+
+Rescaling the spectra of the individual species has not created another steady state. All species now experience a new prey distribution and a new predator distribution and so their growth and death rates have changed, which requires us to run the dynamics again to find the new steady state. So we essentially go back to step 2 and project to steady state:
+
+
+```{r}
+cur_model <- steady(cur_model)
+plotBiomassVsSpecies(cur_model)
+#species_params(cur_model) |> select(erepro)
+```
+
+
+```{r}
+cur_model <- cur_model |>
+     matchBiomasses() |> steady() |> matchBiomasses() |> steady() |>
+   matchBiomasses() |> steady() |> matchBiomasses() |> steady() 
+```
+
+
+
+```{r}
+cur_model <- cur_model |>
+  matchBiomasses() |> steady() |> matchBiomasses() |> steady() |>
+   matchBiomasses() |> steady() |> matchBiomasses() |> steady() |>
+  matchBiomasses() |> steady() |> matchBiomasses() |> steady() |>
+    matchBiomasses() |> steady() |> matchBiomasses() |> steady() #|>
+    #matchBiomasses() |> steady() |> matchBiomasses() |> steady() 
+
+```
+
+
+```{r}
+#plotBiomassVsSpecies(cur_model)
+plotSpectra(cur_model, power = 1
+            
+            )
+
+```
+
+plot works? YAAAAAAAAAAAAA
+
+```{r}
+
+#plotDiet(cur_model, species = "California_sea_lions")
+plotGrowthCurves(cur_model, species_panel = TRUE)
+getReproductionLevel(cur_model)
+```
+
+
+```{r}
+
+species_params(cur_model)
+```
+
+```{r}
+saveParams(cur_model, "cur_model_231109_nofishing_6.rds")
+df1<-(species_params(cur_model))
+write.csv(df1, "C:/Users/vtulloch/Dropbox/UBC/Projects/Orca_salmon_modelling/07_sizespectra/Viv_sizespectra_model/Puget_Sound/spp_Aug2023_CM/ps_mizeroutput_speciesparams_231109_nofishing_6.csv")
+```
+
+
+```{r}
+#Save model to github as RDS
+saveParams(cur_model, "cur_model_addorca_231109_fitted_nofishing_tuneparams.rds")
+
+```
+
+
+
+
+###Step 5: explore model properties####
+Let’s check the diets and see if we can now observed ontogenetic diet shifts.
+
+
+```{r}
+plotDiet(cur_model)
+
+```
+
+
+
+```{r}
+#plotDeath(cur_model, proportion = T)
+plotDeath(cur_model, proportion = F)
+```
+
+
+
+```{r}
+plotGrowthCurves(cur_model, species_panel = TRUE)
+plotFeedingLevel(cur_model)
+plotResourcePred(cur_model, proportion = T)
+```
+
+
+
+```{r}
+#plotYieldVsSpecies(cur_model)
+#cur_modelf <- calibrateYield(cur_model)
+```
+
+
+
+```{r}
+remotes::install_github('sizespectrum/mizerExperimental', ref = 'tuneMR')
+library(mizerExperimental)
+tuneParams(cur_model)
+```
+
+
+
+```{r}
+plotGrowthCurves(tuned_params, species_panel = TRUE)
+getReproductionLevel(tuned_params)
+```
+
+
+
+```{r}
+saveParams(tuned_params, "cur_model_231109_nofishing_6tuneparams.rds")
+df1<-(species_params(tuned_params))
+write.csv(df1, "C:/Users/vtulloch/Dropbox/UBC/Projects/Orca_salmon_modelling/07_sizespectra/Viv_sizespectra_model/Puget_Sound/spp_Aug2023_CM/ps_mizeroutput_speciesparams_231109_nofishing_6tuneparams.csv")
+```
+
+
+```{r}
+#Save model to github as RDS
+saveParams(tuned_params, "cur_model_addorca_231109_fitted_nofishing_6tuneparams.rds")
+
+```
+
+
+
+```{r}
+#remotes::install_github('sizespectrum/mizerExperimental', ref = 'tuneMR')
+#library(mizerExperimental)
+tuneParams(tuned_params)
+```
+
+
+
+ATLANTIS MODEL TUNING
+
+
+### 1. Project forward with no fishing
+
+```{r}
+ cm_tuned <-tuned_params
+
+sim_nf_t30<-project(cm_tuned,effort=0
+            ,t_max=100,dt=0.1,t_save=1)
+plot(sim_nf_t30)
+
+# We animate the result
+animateSpectra(sim_nf_t30, total = TRUE, power = 1)#, 
+               #ylim = c(1e-8, NA), wlim = c(1e-3, NA))
+
+plotlyBiomassRelative(sim_nf_t30)
+```
+
+
+
+
+############CALIBRATION###########
+###
+
+
+
+#### Step 1. Obtain the time-averaged data (e.g. catches or biomasses for each species) and the time-averaged fishing mortalty inputs (e.g. from stock assessments). Typically this should be over a stable part of the time series for your system.
+
+
+```{r}
+params<-cm_tuned
+
+#read in time-averaged  catches  
+cdat<-read.csv("C:/Users/vtulloch/Dropbox/UBC/Projects/Orca_salmon_modelling/07_sizespectra/Viv_sizespectra_model/Puget_Sound/spp_Aug2023_CM/fisheries/ts_fisheries_rev_avyield.csv") ### units: tonnes
+
+# the fishing moratlty rates are already stored in the param object as
+params@species_params$catchability
+
+# let's start again and replace with the initial pre-calibration "guessed" Rmax and Kappa
+params@resource_params$kappa = 1e13
+# penalise the large species with higher density dependence
+params@species_params$R_max <- params@resource_params$kappa*params@species_params$w_inf^-1
+# and reduce erepro
+params@species_params$erepro[]<- 1e-3
+
+params <- setParams(params)
+# run without fishing
+sim <- project(params, t_max = 50, effort =1)
+
+plot(sim)
+
+# We animate the result
+animateSpectra(sim, total = TRUE, power = 1)#, 
+               #ylim = c(1e-8, NA), wlim = c(1e-3, NA))
+
+```
+
+
+#### Step 2. Calibrate the carrying capacity of the background resource spectrum, \kappa, by minimising the error between the modelled and observed  abundance, biomass or catches. 
+
+We could explore the effects further using tune_Params, where we also have a plot of the biomass or catch data. First lets' look at the basic diagnostics and tune kappa and erepro to make sure the feeding levels are high enough for each species. 
+
+```{r}
+tuneParams(params)
+# is there a way to save the final chosen values?
+```
+Let's choose some values that enable the most species to coexist as a starting point for optimisation. Note we won't vary erepro at the same time as Rmax (they depend on each other). However we will use the value of erepro selected for tuneParams.
+
+#### Step 3. Calibrate the maximum recruitment, \Rmax, which will affect the relative biomass of each species (and, combined with the fishing parameters, the catches) by minimising the error between observed and estimated catches or biomasses. We could also include kappa in our estimation here (as in Blanchard et al 2104 & Spence et al 2016) but instead we will use the value that seemed OK in terms of feeding levels in the shiny app, roughly log10(11.5). Same goes for erepro, a value of 1e-2 seemed ok.
+
+
+This might take AWHILE. Go watch some Netflix.
+
+```{r}
+# change kappa and erepro based on shiny epxloration
+ # params@species_params$erepro[] <-1e-2
+  params <- setParams(params,kappa=10^11.5)
+
+# define the initial parameters to send to optimisation code below
+
+# we need 12 Rmaxs, log10 scale
+vary <- log10(1000*params@resource_params$kappa*params@species_params$w_inf^-1)
+#vary<-runif(10,3,12) # or use completley made up values, same for each species test for effects of initial values
+
+#the following getError function combines the steps of the optimisastion above - this time with the multispecies model and output the predicted size spectrum
+
+getError <- function(vary,params=initparam,dat=cdat$Catch_8595_tonnes,data_type="catch",timetorun=100) {
+  params@species_params$R_max[]<-10^vary[1:12]
+  sim <- project(params, effort = 1, t_max = timetorun, dt=0.1)
+          ## what kind of data and output do we have?
+          if (data_type=="SSB") {
+          output <-getSSB(sim)[timetorun,]   #could change to getBiomass if appropriate, also check units.
+          }
+          if (data_type=="catch") {
+         output <-getYield(sim)[timetorun,]/1e6 #### CHECK UNITS !! grams per year? the data are in tonnes per year so converting to tonnes.
+          }
+  pred <- log(output)
+  dat  <- log(dat)
+
+  # sum of squared errors, here on log-scale of predictions and data (could change this or use other error or likelihood options)
+   discrep <- pred - dat
+
+   discrep <- (sum(discrep^2))
+  
+  # can use a strong penalty on the error to ensure we reach a minimum of 10% of the data (biomass or catch) for each species
+ #  if(any(pred < 0.1*dat)) discrep <- discrep + 1e10
+  
+    return(discrep)
+
+   }
+
+## test it
+
+initparams <- params
+
+err<-getError(vary,params,dat=cdat$Catch_8595_tonnes,data_type="catch")
+#err<-getError(vary,params,dat=rep(100,12),data_type="biomass")
+#test
+err
+
+
+
+# this time carry out optimisation, using optim(), with catches
+vals<-optim(par=vary,getError,params=initparams,method ="L-BFGS-B",lower=c(rep(3,12)),upper= c(rep(20,12)))
+
+
+
+# plug back into model
+# make sure kappa and erepro are the same
+params@species_params$erepro[] <-1e-2
+params <- setParams(params,kappa=10^11.5)
+# optim values:
+params@species_params$R_max <- 10^vals$par[1:12] 
+# set the param object
+params<-setParams(params)
+sim <- project(params, effort = 1, t_max = 500, dt=0.1)
+plot(sim)
+
+# and without fishing?
+sim_uf <- project(params, effort = 0, t_max = 500, dt=0.1)
+plot(sim_uf)
+
+# save vals - may want to repeat this setp depending on diagnostics, after changing some parameters
+saveRDS(vals,"optim_vals.RDS")
+
+# save params - may want to repeat this setp depending on diagnostics, after changing some parameters
+saveRDS(params,"optim_param.RDS")
+saveRDS(sim,"optim_sim.RDS")
+
+
+```
+
+#### Step 4. Check that the physiological recruitment, \RDI, is much higher than the realised recruitment, \RDD. High RDI/RDD ratio.
+
+```{r}
+#params<- readRDS("optim_param.RDS")
+#sim <- readRDS("optim_sim.RDS")
+getRDI(params)/getRDD(params)
+
+# seems like the right ballpark according to protocal
+
+# # if needed change erepro & plug back into model
+# params@species_params$erepro[] <-1e-3
+# params <- setParams(params)
+# sim <- project(params, effort = 1, t_max = 500, dt=0.1)
+# plot(sim)
+
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+The newMultispeciesParams() function is not very good at choosing a good initial community configuration. Let's have a look at what is has set up:
+```{r}
+#rp <- resource_params(cur_model)
+#rp_more_pl<-rp
+# Increase kappa by 50%
+#rp_more_pl$kappa <- rp_more_pl$kappa * 2
+#rp_more_pl$n <- 0.8
+#rp_more_pl$r_pp <- 10
+#rp_more_pl$w_pp_cutoff <- 20
+
+#resource_params(cur_model) <- rp_more_pl
+#rp_Pl_high<-resource_params(cur_model)
+#cm_Pl_high <- setResourceSemichemostat(cur_model, rp_Pl_high)
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+###### TUNE ##############################
+
+```{r}
+age_mat_model = age_mat(cur_model)
+age_mat_observed = ps_species_params$age_mat
+data.frame(age_mat_model, age_mat_observed)
+```
+
+
+
+
+
+```{r}
+cur_model2 <- matchGrowth(cur_model)
+```
+
+
+```{r}
+age_mat_model = age_mat(cur_model2)
+data.frame(age_mat_model, age_mat_observed)
+```
+
+```{r}
+cur_model3 <- steady(cur_model2)
+plotlySpectra(cur_model3,power=0,total=FALSE)
+```
+
+```{r}
+age_mat_model = age_mat(cur_model3)
+data.frame(age_mat_model, age_mat_observed)
+plotBiomassVsSpecies(cur_model3)
+```
+
+
+```{r}
+cur_model4 <- cur_model3 |>
+    calibrateBiomass() |> matchBiomasses() |> matchGrowth() |> steady() |>
+    calibrateBiomass() |> matchBiomasses() |> matchGrowth() |> steady() |>
+    calibrateBiomass() |> matchBiomasses() |> matchGrowth() |> steady()  |>
+ calibrateBiomass() |> matchBiomasses() |> matchGrowth() |> steady() |>
+    calibrateBiomass() |> matchBiomasses() |> matchGrowth() |> steady() 
+
+```
+
+```{r}
+age_mat_model = age_mat(cur_model4)
+data.frame(age_mat_model, age_mat_observed)
+plotBiomassVsSpecies(cur_model4)
+plotlySpectra(cur_model4,power=2,total=FALSE)
+```
+
+```{r}
+
+#plotDiet(cur_model, species = "California_sea_lions")
+plotGrowthCurves(cur_model4, species_panel = TRUE)
+
+```
+
+```{r}
+tuneParams(cur_model4)
+```
+
+
+
+##test Von bertalanffy curves
+```{r}
+# Load species parameters
+sp <- df1
+# If the von Bertalanffy t0 parameter is missing, set to 0
+if (!hasName(sp, "t0")) {
+    sp$t0 <- 0
+}
+
+# convert weights to lengths
+sp <- sp |>
+    mutate(l_mat = (w_mat / a) ^ (1/b),
+           l_inf = (w_inf / a) ^ (1/b)) |>
+    select(species, l_mat, l_inf, age_mat, max_age, k_vb, t0) 
+
+# create data frame with von Bertalanffy curves
+vb <- expand.grid(species = sp$species, age = 0:40) |>
+    left_join(sp, by = "species") |>
+    mutate(length = l_inf * (1 - exp(-k_vb * (age - t0))))
+
+ggplot() +
+   # geom_point(aes(x = age, y = length), data = size_at_age,
+  #             position = "jitter", alpha = 0.2) +
+    geom_line(aes(x = age, y = length), data = vb, lwd = 1.2, col = 'blue') +
+    geom_hline(aes(yintercept = l_inf), data = sp) +
+    geom_hline(aes(yintercept = l_mat), data = sp, lty = 2) +
+    geom_vline(aes(xintercept = max_age), data = sp) +
+    geom_vline(aes(xintercept = age_mat), data = sp, lty = 2) +
+    facet_wrap(vars(species), scales = "free_y") + 
+    theme_bw()
+
+
+```
+
+
+
+
+
+
+###TUNE PARAMETERS IN WIDGET
+
+\
+```{r}
+remotes::install_github('sizespectrum/mizerExperimental', ref = 'tuneMR')
+library(mizerExperimental)
+#tuneParams(cur_model)
+```
+
+### Project forward with fishing
+
+```{r}
+sim_grtune<-project(cur_model4,effort=0.5
+            ,t_max=20,dt=0.1,t_save=1)
+plot(sim_grtune)
+
+# We animate the result
+animateSpectra(sim_grtune, total = TRUE, power = 1)#, 
+               #ylim = c(1e-8, NA), wlim = c(1e-3, NA))
+
+plotlyBiomassRelative(sim_grtune)
+```
+
+
+tune_params(cur_model4)
+
+```{r}
+cm<- cur_model
+
+rp <- resource_params(cm)
+
+# Create new resource parameter data frames for more and less plankton 
+rp_steeperPl <- rp
+
+# Increase plankton lambda by 0.1, setting it to 2.15 instead of 2.05
+rp_steeperPl["pl", "lambda"] <- 2.15
+
+
+# Put the new resource parameters into the models
+cm_steeperPl <- setResourceSemichemostat(cm, rp_steeperPl)
+```
+
+
+
+
+
+
+
+
+
+
+
+
+################################################################################################
+**Trying to fit using julia blanchard methods **
+https://github.com/juliablanchard/julia-mizer-course/blob/master/toyexample1.Rmd
+
+## Part B - Calibrating a multi-species model to time-averaged species' catches
+
+
+Calibrating multispecies models in mizer builds on the above example. It is also a little more complex because there are several species size spectra and many more model parameters involved.
+
+Some studies focus on detailed many species-specific values, for example where each species have different values of life-history, size-selective feeding trait parameters (e.g. \beta and \sigma), and details of species interactions (Blanchard et al. 2014, Reum et al. 208) to better capture the dynamics of marine food webs. 
+
+Others, such as Jacobsen et al. (2014,2016), have represented variation in only a couple of the most important life history parametersfor each species - asymptotic size (which links to other parameters such as maturation size and ) and recruitment parameters (Rmax, eRepro) to broadly capture fished communities. 
+
+Once you have paramterised the multispecies model for your system, you may find that species do not coexist or the biomass or catches are very different from your observations.
+
+The background resource parameters and the recruitment parameters, \Rmax (maximum recruitment) and \erepro (reproductive efficiency) greatly affect the biomasses of species in your system. 
+
+The recruitment parameters are highly uncertain and capture density dependent processes in the model that limit the number of offspring that successfully recruit to the smallest size class for each species. In the default mizer package these paramters are used to implement an emergent Beverton-Holt type stock recruitment relationship. 
+
+As a starting point, we will estimate these parameters as a means of fitting the modelled species catches to the observed catches. This could similarly be carried out with biomasses. Other model detailed approaches also exist, see my presentation, but this approach has been used to get models in the right "ball-park".
+
+
+### A Simple Protocol for Multispecies Model Calibration
+
+We will adapt the "recipe" for calibration in Jacobsen et al 2014 (see supp. mat.) and Blanchard et al (2014), into the following steps:
+
+
+0. Run the model with the chosen species-specific parameters. This will relate some of the missing paramsters to \Winf. \Rmax will also be automatically calculated based on equilbrium assumptions (Andersen et al. 2016).
+
+1. Obtain the time-averaged data (e.g. catches or biomasses for each species) and the time-averaged fishing mortalty inputs (e.g. from stock assessments). Typically this should be over a stable part of the time series for your system.
+
+2. Calibrate the carrying capacity of the background resource spectrum, \kappa, by minimising the error between the modelled and observed  abundance, biomass or catches. Typically this is for each species but below we will do this using the empirical community size spectrum, as in the above example.
+
+3. Calibrate the maximum recruitment, \Rmax, which will affect the relative biomass of each species (and, combined with the fishing parameters, the catches) by minimising the error between observed and estimated catches (again or biomasses).
+
+4. Check that the physiological recruitment, \RDI, is much higher than the realised recruitment, \RDD. This can be done using the getRDD and getRDI functions and calculating the ratio which should be around 100  for a specis with \Winf = 1500 g, but varies with asymptotic size and fishing mortality (Andersen 2019). High RDI/RDD ratio indicates the carrying capacity is controlling the population rather than predation or competition. Larger species often require more of this density dependent control than smaller ones. If RDI/RDD is too high, the efficiency of reproduction (erepro) can be lowered to ensure species do not outcompete others or or over-resilient to fishing. Lowering erepro biologically means higher egg mortality rate or wasteful energy invested into gonads. If RDI/RDD = 1 the species is in the linear part of the stock recruitment relationship (no spawner-recruit density dependence).
+
+5. Verify the model after the above step by comparing the model with: species biomass or abundance distrubtions, feeding level, naturality mortality, growth, vulnerablity to fishing (fmsy) and catch, diet composition. Many handy functions for plotting these are available here: https://sizespectrum.org/mizer/reference/index.html
+
+6. The final verification step is to force the model with time-varying fishing mortality to assess whether changes in time series in biomassess and catches capture observed trends. The model will not cpature all of the fluctuations from environmental processes (unless some of these are included), but should match the magnitude and general trend in the data.
+
+#### Step 0. Run the model with the chosen species-specific parameters. This will relate some of the missing paramsters to \Winf. \Rmax will also be automatically calculated based on equilbrium assumptions (Andersen et al. 2016).
+
+
+Let's read in the North Sea model parameters, stored in mizer.
+
+```{r}
+# Let's use the North Sea model parameters, but change the parameters and assumptions so that it's essentially a different uncalibrated model, where species are not coexisting
+
+sparams <- read.csv(
+  "C:/Users/vtulloch/Dropbox/UBC/Projects/Orca_salmon_modelling/07_sizespectra/Viv_sizespectra_model/Puget_Sound/spp_Aug2023_CM/ps_mizer_params_noorca_addyield.csv")
+sparams$beta <-100
+sparams$sigma <-1.5
+sparams$r_max=Inf
+int <- inter
+int<-1
+
+params <- newMultispeciesParams(sparams, inter,kappa = 1e11,max_w=1e6)
+
+# note the volume of this model is set to the reflect the entire volume of the North Sea - hence the very large kappa value. This is system specific and you may wnat to work with per m^3 as in the defaults.
+
+#  Add other params for info
+#  param$Volumecubicmetres=5.5e13    #unit of volume. Here total volume of North sea is used (Andersen & Ursin 1977)
+
+# have a look at species parameters that have been calculated
+params@species_params
+
+#lets' change the plotting colours
+library(viridis)
+params@linecolour[1:12] <-plasma(12)
+params@linecolour["Resource"] <-"seagreen3"
+
+# run with fishing
+sim <- project(params, t_max = 100, effort = 1)
+
+plot(sim)
+```
+
+Oh dear, all of the species but 2 have collapsed! This is because there was no desnity dependence (Rmax default is set at 'Inf') and the largest species (cod and saithe) has outcompeted all of the rest.
+
+
+#### Step 1. Obtain the time-averaged data (e.g. catches or biomasses for each species) and the time-averaged fishing mortalty inputs (e.g. from stock assessments). Typically this should be over a stable part of the time series for your system.
+
+
+```{r}
+
+#read in time-averaged  catches  
+cdat<-read.csv("data/time-averaged-catches.csv") ### units: tonnes
+
+# the fishing moratlty rates are already stored in the param object as
+params@species_params$catchability
+
+# let's start again and replace with the initial pre-calibration "guessed" Rmax and Kappa
+params@resource_params$kappa = 1e11
+# penalise the large species with higher density dependence
+params@species_params$R_max <- params@resource_params$kappa*params@species_params$w_inf^-1
+# and reduce erepro
+params@species_params$erepro[]<- 1e-3
+
+params <- setParams(params)
+# run without fishing
+sim <- project(params, t_max = 100, effort =1)
+
+plot(sim)
+
+```
+
+Species are coexisting. This is in part because we applied a stronger  Rmax effect for larger species. You can play with the above parameters but but it would take a lot of trial an error to achieve the right combination to get the biomass or catches similar to the observations.
+
+#### Step 2. Calibrate the carrying capacity of the background resource spectrum, \kappa, by minimising the error between the modelled and observed  abundance, biomass or catches. 
+
+We could explore the effects further using Rshiny app, where we also have a plot of the biomass or catch data. First lets' look at the basic diagnostics and tune kappa and erepro to make sure the feeding levels are high enough for each species. 
+
+```{r}
+library(shiny)
+runApp("shiny-equilibrium")
+# is there a way to save the final chosen values?
+```
+
+This improves matters a little, but we need to make some species-specific adjustments.
+
+The shiny app helps with understanding the model but it is tricky to arrive at the best fit especially if we want to change several species parameter combinations at a time.
+
+Let's choose some values that enable the most species to coexist as a starting point for optimisation. Note we won't vary erepro at the same time as Rmax (they depend on each other). However we will use the value of erepro selected form the shiny app.
+
+#### Step 3. Calibrate the maximum recruitment, \Rmax, which will affect the relative biomass of each species (and, combined with the fishing parameters, the catches) by minimising the error between observed and estimated catches or biomasses. We could also include kappa in our estimation here (as in Blanchard et al 2104 & Spence et al 2016) but instead we will use the value that seemed OK in terms of feeding levels in the shiny app, roughly log10(11.5). Same goes for erepro, a value of 1e-2 seemed ok.
+
+
+This might take AWHILE. Go watch some Netflix.
+
+```{r}
+# change kappa and erepro based on shiny epxloration
+  params@species_params$erepro[] <-1e-2
+  params <- setParams(params,kappa=10^11.5)
+
+# define the initial parameters to send to optimisation code below
+
+# we need 12 Rmaxs, log10 scale
+vary <- log10(1000*params@resource_params$kappa*params@species_params$w_inf^-1)
+#vary<-runif(10,3,12) # or use completley made up values, same for each species test for effects of initial values
+
+#the following getError function combines the steps of the optimisastion above - this time with the multispecies model and output the predicted size spectrum
+
+getError <- function(vary,params=initparam,dat=cdat$Catch_8595_tonnes,data_type="catch",timetorun=100) {
+  params@species_params$R_max[]<-10^vary[1:12]
+  sim <- project(params, effort = 1, t_max = timetorun, dt=0.1)
+          ## what kind of data and output do we have?
+          if (data_type=="SSB") {
+          output <-getSSB(sim)[timetorun,]   #could change to getBiomass if appropriate, also check units.
+          }
+          if (data_type=="catch") {
+         output <-getYield(sim)[timetorun,]/1e6 #### CHECK UNITS !! grams per year? the data are in tonnes per year so converting to tonnes.
+          }
+  pred <- log(output)
+  dat  <- log(dat)
+
+  # sum of squared errors, here on log-scale of predictions and data (could change this or use other error or likelihood options)
+   discrep <- pred - dat
+
+   discrep <- (sum(discrep^2))
+  
+  # can use a strong penalty on the error to ensure we reach a minimum of 10% of the data (biomass or catch) for each species
+ #  if(any(pred < 0.1*dat)) discrep <- discrep + 1e10
+  
+    return(discrep)
+
+   }
+
+## test it
+
+initparams <- params
+
+err<-getError(vary,params,dat=cdat$Catch_8595_tonnes,data_type="catch")
+#err<-getError(vary,params,dat=rep(100,12),data_type="biomass")
+#test
+err
+
+
+
+# this time carry out optimisation, using optim(), with catches
+vals<-optim(par=vary,getError,params=initparams,method ="L-BFGS-B",lower=c(rep(3,12)),upper= c(rep(20,12)))
+
+
+
+# plug back into model
+# make sure kappa and erepro are the same
+params@species_params$erepro[] <-1e-2
+params <- setParams(params,kappa=10^11.5)
+# optim values:
+params@species_params$R_max <- 10^vals$par[1:12] 
+# set the param object
+params<-setParams(params)
+sim <- project(params, effort = 1, t_max = 500, dt=0.1)
+plot(sim)
+
+# and without fishing?
+sim_uf <- project(params, effort = 0, t_max = 500, dt=0.1)
+plot(sim_uf)
+
+# save vals - may want to repeat this setp depending on diagnostics, after changing some parameters
+saveRDS(vals,"optim_vals.RDS")
+
+# save params - may want to repeat this setp depending on diagnostics, after changing some parameters
+saveRDS(params,"optim_param.RDS")
+saveRDS(sim,"optim_sim.RDS")
+
+
+```
+
+#### Step 4. Check that the physiological recruitment, \RDI, is much higher than the realised recruitment, \RDD. High RDI/RDD ratio.
+
+```{r}
+#params<- readRDS("optim_param.RDS")
+#sim <- readRDS("optim_sim.RDS")
+getRDI(params)/getRDD(params)
+
+# seems like the right ballpark according to protocal
+
+# # if needed change erepro & plug back into model
+# params@species_params$erepro[] <-1e-3
+# params <- setParams(params)
+# sim <- project(params, effort = 1, t_max = 500, dt=0.1)
+# plot(sim)
+
+```
+
+
+#### Step 5. Verify the model after the above step by comparing the model with data. 
+
+Eg. species biomass or abundance distrubtions, feeding level, naturality mortality, growth, vulnerablity to fishing (fmsy) and catch, diet composition.. Many handy functions for plotting these are available here: https://sizespectrum.org/mizer/reference/index.html
+
+
+```{r}
+
+
+## but really not a very good fit to the data !!! model underestimates yield for some species
+pred_yield <-melt(getYield(sim)[100,]/1e6)
+pred_yield$obs <- cdat$Catch_8595
+pred_yield$species <-row.names(pred_yield)
+
+p <- ggplot() + # plot predicted and observed yields
+        geom_point(data = pred_yield, 
+            aes(x = log10(value), y = log10(obs), color = species)) +
+   # plot optimal fit line
+        geom_abline(color = "black", slope = 1, intercept = 0) + 
+  xlab("log10 Predicted Yield") + 
+  ylab("log10 Observed Yield") #+ 
+ # scale_fill_manual(values = wes_palette(12, "Zissou")) 
+p
+ 
+ 
+# check other plots
+
+plotlyGrowthCurves(sim,percentage = T) 
+plotlyFeedingLevel(sim) 
+plotGrowthCurves(sim,"Cod") # check each species - growth way too low for cod, not sure if these kvb params are correct/or should not be used in this way
+plotlySpectra(sim,power=2)
+plotDiet(params,"Cod") ## Maybe feeding too much on background resource, although here note that is "other food" too, such as benthos.
+# What would happen if changed the interactiion matrix or beta and sigma?
+
+
+```
+
+#### Step 6. The final verification step is to force the model with time-varying fishing mortality to assess whether changes in time series in biomassess and catches capture observed trends. The model will not cpature all of the fluctuations from environmental processes ( unless some of these are included), but should match the magnitude and general trend in the data.
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+##############################################################################################
+### MULTIPLE RESOURCES
+## ADD BENTHIC RESOURCES
+################################################################################################
+
+RESOURCE = MICROZOOPLANKTON???
+WHAT ABOUT SETTING UP MULTIPLE RESOURCES - BENTHIC AS WELL AS PLANKTON
+
+
+Step 1: Get mizerMR
+mizerMR is an extension to the mizer package and it demonstrates a flexible way of adding new features, contributed by the mizer modeller community. If you modify mizer to add new features, please consider making an extension package and making it available for all mizer users.
+
+First, we will install mizerMR from GitHub.
+Also update and load mizerExperimental and tidyverse
+
+
+```{r}
+remotes::install_github("sizespectrum/mizerMR")
+library(mizerMR)
+#remotes::install_github("sizespectrum/mizerExperimental")
+library(mizerExperimental)
+library(tidyverse)
+```
+
+
+##Planktonic paramters
+For our plankton resource we use similar parameters to those for our existing single resource. Let us look at those first. Because our model is currently set up only with a single resource, the resource parameters are not in a data frame with one row for each resource but are simply a list:
+
+```{r}
+resource_params(cur_model)
+```
+We see that this list contains also parameters that we ignore for now because they are about the dynamics rather than the steady state abundance. Also, for historical reasons, the maximum size w_max is called w_pp_cutoff in the above list. We will keep the lambda and kappa parameters for the plankton spectrum.
+
+```{r}
+kappa <-  resource_params(cur_model)$kappa
+lambda <- resource_params(cur_model)$lambda
+```
+
+
+We will reduce the maximum size of the plankton spectrum from the current value of 10 grams (which corresponds to about 10cm long fish!) to 1 gram.
+
+```{r}
+w_max <- 1 
+```
+
+
+To choose a minimum size we look at the current minimum size which we can find in the first entry in the vector of size bins:
+
+```{r}
+w_full(cur_model)[[1]]
+
+# round to 10^-12
+w_min <- 1e-12
+```
+
+
+
+##Benthic parameters
+Now we need to make decisions about the parameters for the benthic spectrum. We are aiming to reproduce ontogenetic diet shifts, where species start feeding on plankton and then may transition into the benthic spectrum. This means that, as plankton abundance decreases, benthos abundance should become relatively higher. To achieve that, we will start the benthos spectrum from a larger minimum size, extend it to much larger size than plankton spectrum, and have shallower slope for the benthos spectrum.
+
+Ideally, you would have size based benthos abundance or biomass data and fit a linear model to get the slope. This was done for the Tasmanian model (see supplementary materials in this preprint). For the Curonian lagoon we do not have such data, so we will just assume a slope of 1.9 instead of 2.05, but keep kappa equal for now. The benthic spectrum will extend to 10 grams to represent largest benthic invertebrates and some cryptic small benthic fish not explicitly included in the model.
+
+We will save all resource parameters in separate variables, so we can use them later.
+
+
+
+```{r}
+# Set benthos kappa same as plankton kappa 
+kappa_ben <- kappa
+# Assume more shallow slope for benthos 
+lambda_ben <- 1.9
+# Set maximum benthos size 
+w_max_ben <- 10
+# Benthos starts at larger sizes, corresponding to about 1-2mm
+w_min_ben <- 0.0001
+
+###Now we put all these resource parameters into a data frame.
+
+ps_resource_params <- data.frame(
+    resource = c("pl", "bb"),
+    lambda = c(lambda, lambda_ben),
+    kappa = c(kappa, kappa_ben),
+    w_min = c(w_min, w_min_ben),
+    w_max = c(w_max, w_max_ben)
+)
+
+ps_resource_params
+
+```
+
+
+
+```{r}
+resource_params(cur_model) <- ps_resource_params
+```
+
+
+##Step 3: Set resource interactions
+The next and most interesting step is to define the availability of each resource to our model species. This is where our biological and ecological knowledge comes in, but we may need to adjust these values to ensure we get the expected ontogenetic diet shifts.
+
+By default all resource interactions are set to 1.
+
+```{r}
+resource_interaction(cur_model)
+```
+
+In this simple model we will assume that largely planktivorous small fish have full access to the plankton resource, and can only access a small fraction (0.2) of the benthic resource. For benthivorous fish, like vimba, carassius, breams, roach and ruffe we give full access to the benthic resource and reduce availability of plankton to 0.5. Remember, all fish start by feeding on plankton, so they all should have enough access to the plankton resource. We might need to increase this value if it seems that small fish don’t grow fast enough. For a small sized ruffe we increase plankton availability to 0.8. For predatory fish we set both plankton and benthos availability to 0.5. This is to ‘encourage’ them to start feeding on other fish.
+
+### ALSO _ CHANGE PISCIVOROUS FLATFISH INTERACTION WITH ZOOPLANKTON TO 1
+
+We have now changed resource availability quite a bit. This has changed the growth rates and hence we need to recalculate the steady state. We will use the same set of functions as in the single resource model in the previous tutorial.
+
+```{r}
+resource_interaction_list <- 
+  read.csv(
+    "C:/Users/vtulloch/Dropbox/UBC/Projects/Orca_salmon_modelling/07_sizespectra/Viv_sizespectra_model/Puget_Sound/spp_Aug2023_CM/ps_mizer_resourceint_test3.csv", row.names=1)
+
+
+#set vectors of plankton and benthos availability for the model species 
+#plankton_avail <- c(1,   1,   0.5, 0.25, 0.25, 0.25, 0.25, 0.25, 0.5, 0.5, 0.5)
+#benthos_avail  <- c(0.5, 0.75, 1,   0.25, 0.25, 0.25, 0.25, 0.5, 0.25, 0.5, 0.5)
+
+#dimnames(resource_interaction(cur_model))
+
+#put them into corresponding columns of resource_interaction matrix
+resource_interaction(cur_model)[, 1] <- resource_interaction_list[,1]
+resource_interaction(cur_model)[, 2] <- resource_interaction_list[,2]
+
+
+##**Step 4: find new steady state**
+
+cur_model <- steady(cur_model)
+
+cur_model <- cur_model |> 
+    matchBiomasses() |> steady() |>
+    matchBiomasses() |> steady() |>
+    matchBiomasses() |> steady() 
+
+plotSpectra(cur_model, power = 2)
+
+```
+
+
+```{r}
+plotDiet(cur_model)
+```
+
+
+
+Benthivores, such as ruffe, breams, roach, vimba and carrasius start in the plankton spectrum and then transition to feeding on benthos. They don’t transition fully, which we need to work on. Adult benthivores should really only eat benthos and no plankton. We can probably fix that by increasing abundance kappa for the benthic resource or making its slope lambda even more shallow. Predators nicely start on plankton, transition to benthos and then to fish. For the largest predators, such as predator_fish and pikeperch we want adult diets to consist almost entirely of fish. So we might need to reduce benthic resource availability to these species. You can do that now and explore the outcomes, or we will do it in the next tutorial.
+
+
+
+```{r}
+saveParams(cur_model, "cur_model_test3_tworesource_noorca_230911.rds")
+```
+
+### Project forward with fishing
+
+```{r}
+sim2<-project(cur_model,effort=1
+            ,t_max=30,dt=0.1,t_save=1)
+plot(sim2)
+
+# We animate the result
+animateSpectra(sim2, total = TRUE, power = 2)#, 
+               #ylim = c(1e-8, NA), wlim = c(1e-3, NA))
+```
+
+
+## CHECK NATURAL MORTALITY FITS NOAA NUMBERS
+```{r}
+plotDeath(cur_model, proportion = F)
+```
+
+## exploring reproduction
+```{r}
+cur_model <- readParams("../cur_model_test3_tworesource_noorca_230911.rds")
+```
+
+Remember: the reproduction level is the ratio between RDD and R_max and can vary between 0 and 1. It tells us how close the actual reproduction (after applying density dependence) is to the theoretical maximum, set by R_max. 
+
+```{r}
+getReproductionLevel(cur_model)
+#getRDD(cm) / species_params(cm)$R_max
+```
+
+
+
+We can also look how close the density dependent reproduction rate RDD is to the density independent reproduction rate RDI, which is the rate at which eggs are produced.
+
+```{r}
+getRDI(cur_model) / getRDD(cur_model)
+```
+
+This tells us that many species can produce large amounts of eggs, but the actual reproduction is strongly capped by the R_max parameter.
+
+
+
+
+tuneParams(cur_model4)
+
+
+**SET EXTERNAL MORTALITY RATE FROM NOAA**
+
+params<-newMultispeciesParams(NS_species_params) 
+####Settingallometricdeathrate####################### #Setcoefficientforeachspecies.Herewechoose0.1foreachspecies 
+z0pre<-rep(0.1,nrow(species_params(params))) 
+#Multiplybypowerofsizewithexponent,herechosentobe-1/4 
+#Theouter()functionmakesitanarrayspeciesxsize 
+allo_mort<-outer(z0pre,w(params)^(-1/4)) 
+#Changetheexternalmortalityrateintheparamsobject 
+ext_mort(params)<-allo_mort
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+**Step 1: Create a MizerParams object with ORCA**
+
+Set up a multi-species mizer model - let mizer choose defaults for resource parameters and gear parameters. Set fishing effort to 0.3 (fishing mortality of 0.3 per year on those fish).
+
+```{r}
+ps_species_params_orca <-   read.csv(
+
+"C:/Users/vtulloch/Dropbox/UBC/Projects/Orca_salmon_modelling/07_sizespectra/Viv_sizespectra_model/Puget_Sound/spp_Aug2023_CM/ps_mizer_params_addorca.csv")
+
+ps_interaction_orca <- 
+  read.csv(
+"C:/Users/vtulloch/Dropbox/UBC/Projects/Orca_salmon_modelling/07_sizespectra/Viv_sizespectra_model/Puget_Sound/spp_Aug2023_CM/ps_mizer_interaction_test3_simple.csv", row.names=1)
+
+cur_model_orca <- newMultispeciesParams(species_params = ps_species_params_orca, 
+                                   interaction = ps_interaction_orca, 
+                                   #initial_effort = 0.1,
+                                   lambda = 2.00, n = 3/4, p = 3/4
+                                   )
+
+species_params(cur_model_orca) |> select(w_inf, w_max, w_mat, a, b, h, ks, z0,erepro, R_max)
+
+
+
+##change resource parameters
+resource_params(cur_model_orca) <- ps_resource_params
+
+
+resource_interaction_list <- 
+  read.csv(
+    "C:/Users/vtulloch/Dropbox/UBC/Projects/Orca_salmon_modelling/07_sizespectra/Viv_sizespectra_model/Puget_Sound/spp_Aug2023_CM/ps_mizer_resourceint_test3_addorca.csv", row.names=1)
+
+
+#put them into corresponding columns of resource_interaction matrix
+resource_interaction(cur_model_orca)[, 1] <- resource_interaction_list[,1]
+resource_interaction(cur_model_orca)[, 2] <- resource_interaction_list[,2]
+
+species_params(cur_model_orca)
+
+
+```
+
+# Setting erepro for some species
+
+
+species_params(cur_model_orca$w_mat( c( "Resident_Orca" = 2298182.625)
+
+
+# Setting R_max
+R_max <- 1e17 * species_params(params)$w_max^-1
+
+
+#Settingreproduction_level 
+```{r}
+params <-cur_model_orca
+params<-setBevertonHolt(params,reproduction_level=0.3)
+
+species_params(params)
+t(species_params(params)[,c("erepro","R_max")])
+```
+
+
+
+```{r}
+params <-cur_model_orca
+
+# Attempting to set the same erepro for all species
+params <- setBevertonHolt(params, erepro = 0.1)
+
+params <- setBevertonHolt(params, R_max = c("Harbor_seals" = 2017.21437620902, 
+                                            "California_sea_lions" = 606.054820802288, 
+                           "Steller_sea_lions"= 41.0825453622767,
+                            "Harbor_porpoise"= 1329.00830082136,
+                            "Resident_Orca" = 1
+                             ))
+#t(ps_species_params_orca(params)[, c("erepro", "R_max")])
+
+
+```
+
+```{r}
+#**Step 2: Project to steady state**
+
+cur_model_steady_orca <- steady(cur_model_orca)
+#species_params(cur_model_steady_orca) |> select(w_inf, w_max, w_mat, a, b, h, ks, z0,erepro, R_max, reproduction_level)
+species_params(cur_model_steady_orca)
+plotlySpectra(cur_model_steady_orca, power = 2)
+```
+
+**Step 3: Calibrate the scale**
+**Step 4: Rescale species spectra**
+
+```{r}
+
+cur_model_orca <- calibrateBiomass(cur_model_steady_orca)
+cur_model_orca <- matchBiomasses(cur_model_orca)
+plotBiomassVsSpecies(cur_model_orca)
+species_params(cur_model_orca)
+
+```
+
+**Step 5: Rinse and repeat**
+
+```{r}
+cur_model_orca <- steady(cur_model_orca)
+
+```
+
+
+```{r}
+cur_model_orca <- cur_model_orca |>
+    matchBiomasses() |> steady() |> matchBiomasses() |> steady() |>
+    matchBiomasses() |> steady() |> matchBiomasses() |> steady() |>
+   matchBiomasses() |> steady() |> matchBiomasses() |> steady() |>
+    matchBiomasses() |> steady() |> matchBiomasses() |> steady() |>
+    matchBiomasses() |> steady() |> matchBiomasses() |> steady() |>
+    matchBiomasses() |> steady() |> matchBiomasses() |> steady() |>
+   matchBiomasses() |> steady() |> matchBiomasses() |> steady() |>
+    matchBiomasses() |> steady() |> matchBiomasses() |> steady() |>
+    matchBiomasses() |> steady() |> matchBiomasses() |> steady()
+
+```
+
+
+```{r}
+plotBiomassVsSpecies(cur_model_orca)
+plotSpectra(cur_model_orca, power = 2)
+
+```
+
+
+```{r}
+#saveParams(cur_model, "cur_model_test3simple.rds")
+df2<-(species_params(cur_model_orca))
+write.csv(df1, "C:/Users/vtulloch/Dropbox/UBC/Projects/Orca_salmon_modelling/07_sizespectra/Viv_sizespectra_model/Puget_Sound/spp_Aug2023_CM/ps_mizer_output_speciesparams_addorca.csv")
+```
+### Project forward with fishing
+
+```{r}
+sim_cm4<-project(cur_model3,effort=0.25
+            ,t_max=50,dt=0.1,t_save=1)
+plot(sim_cm4)
+
+# We animate the result
+animateSpectra(sim_cm4, total = TRUE, power = 2)#, 
+              # ylim = c(1e-12, NA), wlim = c(1e-3, NA))
+```
+
+### Project forward with fishing
+
+```{r}
+sim_cm3<-project(cur_model3,effort=0.25
+            ,t_max=30,dt=0.1,t_save=1)
+plot(sim_cm3)
+
+# We animate the result
+animateSpectra(sim_cm3, total = TRUE, power = 2)#, 
+              # ylim = c(1e-12, NA), wlim = c(1e-3, NA))
+```
+
+
+### Save widget
+
+```{r}
+library(plotly)
+htmlwidgets::saveWidget(as_widget(animateSpectra(sim_cm3, total = TRUE, power = 2)),"orca_mizer_cm3.html")
+```
+
+
+### Project forward with fishing
+
+```{r}
+sim_cm3t<-project(tuned_params_cm3,effort=0.25
+            ,t_max=30,dt=0.1,t_save=1)
+plot(sim_cm3t)
+
+# We animate the result
+animateSpectra(sim_cm3t, total = TRUE, power = 2)#, 
+              # ylim = c(1e-12, NA), wlim = c(1e-3, NA))
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+### ADD ORCAS!!!
+
+
+```{r}
+remotes::install_github("sizespectrum/mizerMR")
+library(mizerMR)
+```
+
+
+Trying to add an additional resource so species don't go extinct?
+NEED TO ADD SQUID AND OCTOPUS FOR SEA LIONS
+
+
+```{r}
+#
+
+ps_species_params_noorca <-   read.csv(
+  "C:/Users/vtulloch/Dropbox/UBC/Projects/Orca_salmon_modelling/07_sizespectra/Viv_sizespectra_model/Puget_Sound/spp_July2023_hem/ps_mizer_simplemodel_params_test2_newpars.csv")
+
+## interaction matrix set to 0,1 - need to modify this based on prey preferences
+ps_interaction_noorca <- 
+  read.csv(
+    "C:/Users/vtulloch/Dropbox/UBC/Projects/Orca_salmon_modelling/07_sizespectra/Viv_sizespectra_model/Puget_Sound/spp_July2023_hem/ps_mizer_interaction_test2.csv", row.names=1)
+
+
+# We make a copy of the model
+cm_noorca <- newMultispeciesParams(species_params = ps_species_params_noorca, 
+                                   interaction = ps_interaction_noorca, 
+                                   initial_effort = 0.1,
+                                   lambda = 2.02, n = 3/4, p = 3/4
+                                   )
+
+
+# We run the dynamics until we reach steady state
+cm_noorca_steady <- projectToSteady(cm_noorca)
+plotSpectra(cm_noorca_steady, power = 2)
+
+```
+
+```{r}
+cm_lessRes<- cm_noorca
+  
+# and set the resource interaction to 0.8 for species 8 to 11
+species_params(cm_lessRes)$interaction_resource[20:22] <- 0.1
+
+# We run the dynamics until we reach steady state
+cm_lessRes_steady <- projectToSteady(cm_lessRes)
+
+
+# We compare the steady states
+plotSpectra2(cm_lessRes_steady, cm_noorca_steady, "less resource", "original", 
+            total = TRUE, power = 2)#, 
+           # ylim = c(1e-8, NA), wlim = c(1e-3, NA))
+
+# We compare the steady states
+plotSpectra(cm_lessRes_steady, 
+            total = TRUE, power = 2)#, 
+           # ylim = c(1e-8, NA), wlim = c(1e-3, NA))
+
+```
+
+Plot diet see whats going on
+
+```{r}
+plotDiet(cm_lessRes_steady)
+
+```
+
+```{r}
+
+plotDeath(cm_lessRes_steady, proportion = T)
+
+```
+
+```{r}
+
+plotResourcePred(cm_lessRes_steady, proportion = T)
+
+```
+
+
+ check whether species are growing properly
+ 
+```{r}
+
+plotGrowthCurves(cm_lessRes_steady, species_panel = T)
+
+```
+
+
+look at the feeding level of all species (https://course.mizer.sizespectrum.org/build/set-multiple-resources.html#step-5-explore-model-properties)
+Feeding levels should be  close to the default larval value of f0 = 0.6. 
+If not -  slow growth rates of predators are likely due to the lack of food
+
+if ~0 - not enough food for it to eat
+if ~1 - more food than it needs
+function of food availability and the maximum intake rate
+
+```{r}
+plotFeedingLevel(cm_lessRes_steady)
+```
+
+PLAY WITH PARAMETERS IN tuneParams()
+
+
+
+
+### PERHAPS START PLAYING WITH REPRODUCTION
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+```{r}
+# We make a copy of the model
+cm_lessRes <- cur_model
+# and set the resource interaction to 0.8 for species 8 to 11
+species_params(cm_lessRes)$interaction_resource[20:21] <- 0.6
+
+# We run the dynamics until we reach steady state
+cm_lessRes_steady <- projectToSteady(cm_lessRes)
+
+# We compare the steady states
+plotSpectra(cm_lessRes_steady, #"less resource", 
+             # cm_lessRes, "original", 
+            total = TRUE, 
+            power = 2 #, 
+            #ylim = c(1e-8, NA), wlim = c(1e-3, NA)
+            )
+
+```
+```{r}
+# We compare the steady states
+plotSpectra2(cm_lessRes_steady, cur_model, "less resource", "original", 
+            total = TRUE, power = 2)#, 
+           # ylim = c(1e-8, NA), wlim = c(1e-3, NA))
+
+```
+
+
+
+```{r}
+# We simulate the dynamics for 30 years, saving only every 2nd year
+sim_lessRes <- project(cm_lessRes_steady, t_max =30, t_save = 2)
+
+# We animate the result
+animateSpectra(sim_lessRes, total = TRUE, power = 2)#, 
+               #ylim = c(1e-8, NA), wlim = c(1e-3, NA))
+```
+
+
+```{r}
+# We simulate the dynamics for 30 years, saving only every 2nd year
+sim_cur_model <- project(cur_model, t_max =30, t_save = 2)
+
+# We animate the result
+animateSpectra(sim_cur_model, total = TRUE, power = 2)#, 
+               #ylim = c(1e-8, NA), wlim = c(1e-3, NA))
+````
+
+
+### plot biomass
+
+```{r}
+getBiomass(sim_lessRes)
+plotBiomass(sim_lessRes)
+```
+
+
+
+### The density-dependent rate of reproduction is calculated in mizer with getRDD():
+
+```{r}
+getRDD(cur_model)
+getReproductionLevel(cur_model)
+```
+
+
+##############################################################################################
+### MULTIPLE RESOURCES
+################################################################################################
+
+RESOURCE = MICROZOOPLANKTON???
+WHAT ABOUT SETTING UP MULTIPLE RESOURCES - BENTHIC AS WELL AS PLANKTON
+
+
+Step 1: Get mizerMR
+mizerMR is an extension to the mizer package and it demonstrates a flexible way of adding new features, contributed by the mizer modeller community. If you modify mizer to add new features, please consider making an extension package and making it available for all mizer users.
+
+First, we will install mizerMR from GitHub.
+
+
+
+```{r}
+remotes::install_github("sizespectrum/mizerMR")
+library(mizerMR)
+```
+
+
+
+# Also update and load mizerExperimental and tidyverse
+
+
+```{r}
+#remotes::install_github("sizespectrum/mizerExperimental")
+library(mizerExperimental)
+library(tidyverse)
+```
+
+
+
+
+
+##Planktonic paramters
+For our plankton resource we use similar parameters to those for our existing single resource. Let us look at those first. Because our model is currently set up only with a single resource, the resource parameters are not in a data frame with one row for each resource but are simply a list:
+
+```{r}
+resource_params(cur_model)
+```
+We see that this list contains also parameters that we ignore for now because they are about the dynamics rather than the steady state abundance. Also, for historical reasons, the maximum size w_max is called w_pp_cutoff in the above list. We will keep the lambda and kappa parameters for the plankton spectrum.
+
+```{r}
+kappa <-  resource_params(cur_model)$kappa
+lambda <- resource_params(cur_model)$lambda
+```
+
+
+We will reduce the maximum size of the plankton spectrum from the current value of 10 grams (which corresponds to about 10cm long fish!) to 1 gram.
+
+```{r}
+w_max <- 1 
+```
+
+
+To choose a minimum size we look at the current minimum size which we can find in the first entry in the vector of size bins:
+
+```{r}
+w_full(cur_model)[[1]]
+
+# round to 10^-12
+w_min <- 1e-12
+```
+
+
+
+##Benthic parameters
+Now we need to make decisions about the parameters for the benthic spectrum. We are aiming to reproduce ontogenetic diet shifts, where species start feeding on plankton and then may transition into the benthic spectrum. This means that, as plankton abundance decreases, benthos abundance should become relatively higher. To achieve that, we will start the benthos spectrum from a larger minimum size, extend it to much larger size than plankton spectrum, and have shallower slope for the benthos spectrum.
+
+Ideally, you would have size based benthos abundance or biomass data and fit a linear model to get the slope. This was done for the Tasmanian model (see supplementary materials in this preprint). For the Curonian lagoon we do not have such data, so we will just assume a slope of 1.9 instead of 2.05, but keep kappa equal for now. The benthic spectrum will extend to 10 grams to represent largest benthic invertebrates and some cryptic small benthic fish not explicitly included in the model.
+
+We will save all resource parameters in separate variables, so we can use them later.
+
+
+
+```{r}
+# Set benthos kappa same as plankton kappa 
+kappa_ben <- kappa
+# Assume more shallow slope for benthos 
+lambda_ben <- 1.9
+# Set maximum benthos size 
+w_max_ben <- 10
+# Benthos starts at larger sizes, corresponding to about 1-2mm
+w_min_ben <- 0.0001
+
+###Now we put all these resource parameters into a data frame.
+
+ps_resource_params <- data.frame(
+    resource = c("pl", "bb"),
+    lambda = c(lambda, lambda_ben),
+    kappa = c(kappa, kappa_ben),
+    w_min = c(w_min, w_min_ben),
+    w_max = c(w_max, w_max_ben)
+)
+
+ps_resource_params
+
+```
+
+
+
+```{r}
+resource_params(cur_model) <- ps_resource_params
+```
+
+##Step 3: Set resource interactions
+The next and most interesting step is to define the availability of each resource to our model species. This is where our biological and ecological knowledge comes in, but we may need to adjust these values to ensure we get the expected ontogenetic diet shifts.
+
+By default all resource interactions are set to 1.
+
+```{r}
+resource_interaction(cur_model)
+```
+
+In this simple model we will assume that largely planktivorous small fish have full access to the plankton resource, and can only access a small fraction (0.2) of the benthic resource. For benthivorous fish, like vimba, carassius, breams, roach and ruffe we give full access to the benthic resource and reduce availability of plankton to 0.5. Remember, all fish start by feeding on plankton, so they all should have enough access to the plankton resource. We might need to increase this value if it seems that small fish don’t grow fast enough. For a small sized ruffe we increase plankton availability to 0.8. For predatory fish we set both plankton and benthos availability to 0.5. This is to ‘encourage’ them to start feeding on other fish.
+
+
+```{r}
+
+#set vectors of plankton and benthos availability for the model species 
+plankton_avail <- c(0.25, 0.5, 0.75, 0.25, 0.25, 0.25, 0.25, 0.25, 0.5, 0.5, 0.5)
+benthos_avail <- c(0.25, 0.5, 0.5, 0.25, 0.25, 0.25, 0.25, 0.5, 0.25, 0.5, 0.6)
+
+#put them into corresponding columns of resource_interaction matrix
+resource_interaction(cur_model)[, 1] <- plankton_avail
+resource_interaction(cur_model)[, 2] <- benthos_avail
+```
+
+
+##Step 4: find new steady state
+We have now changed resource availability quite a bit. This has changed the growth rates and hence we need to recalculate the steady state. We will use the same set of functions as in the single resource model in the previous tutorial.
+
+
+```{r}
+
+modified_species_params$sigma <- 1
+
+modified_model <- 
+    newMultispeciesParams(species_params = modified_species_params,
+                          interaction = ps_interaction_nopinn,
+                          initial_effort = 0.1,
+                          lambda = 2.2, n = 3/4, p = 3/4)
+
+
+```
+
+cur_model <- steady(cur_model)
+
+```
+
+```{r}
+plotSpectra(cur_model, power = 2)
+```
+
+
+
+
+
+```{r}
+
+```
+
+
