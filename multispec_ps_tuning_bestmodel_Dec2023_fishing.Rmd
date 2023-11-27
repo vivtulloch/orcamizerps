@@ -140,6 +140,14 @@ plotSpectra(cur_model)
 
 
 
+```{r}
+df1<-species_params(cur_model)
+write.csv(df1,
+  "C:/Users/vtulloch/Dropbox/UBC/Projects/Orca_salmon_modelling/07_sizespectra/Viv_sizespectra_model/Puget_Sound/spp_Aug2023_CM/bestmodel_outputparams_231127_addfishinpars_upd.csv") ### units: tonnes
+saveParams(cur_model, "bestmodel_231127_fishingpars_tuneparams.rds")
+```
+
+
 
 
 
