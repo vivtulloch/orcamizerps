@@ -21,7 +21,7 @@ library(tidyverse)
 
 ```{r}
 #Open model 
-cur_model <-readParams("C:/~/orcamizerps_upd/bestmodel_231127_nofishing_tuneparams.rds")
+cur_model <-readParams("C:/~/orcamizerps_upd/bestmodel_231127_fishingpars_tuneparams.rds")
 #species_params(params) |> select(erepro)
 
 ```
@@ -33,15 +33,91 @@ cur_model <-readParams("C:/~/orcamizerps_upd/bestmodel_231127_nofishing_tunepara
 #tuneParams(cm_tuned)
 ```
 
-```{r}
-# run without fishing
-sim <- project(cur_model, t_max = 1, effort =0.1, t_save=3)
 
-plot(sim)
-animateSpectra(sim, total = TRUE, power = 1)#, 
-               #ylim = c(1e-8, NA), wlim = c(1e-3, NA))
+### TUNING RESILIENCE!
+
+We need to decide what reproduction parameters we should set to start our tuning. We will follow the approach of Jacobsen et al. 2016 and initially set the reproductive efficiency erepro to the same value for all species.
+
+We use the setBevertonHolt() function to set the values for erepro. That function automatically also adjusts the values for R_max to keep the steady state reproduction rate Rdd  the same, 
+If we try to set the value for erepro very low, the setBevertonHolt() function will issue a warning. Because we want all species to have the same value, we choose a value that is larger than those required. So we choose erepro = 0.43
+
+
+```{r}
+cel_model<-cur_model
+#getReproductionLevel(cel_model)
+cel_model <- setBevertonHolt(cel_model, erepro = 0.43)
+getReproductionLevel(cel_model)
+species_params(cel_model) |> select(erepro, R_max)
 
 ```
+Remember: the reproduction level is the ratio between RDD and R_max and can vary between 0 and 1. It tells us how close the actual reproduction (after applying density dependence) is to the theoretical maximum, set by R_max. So instead of using the getReproductionLevel() function we could also have done the calculation ourselves:
+
+
+```{r}
+getRDD(cel_model) / species_params(cel_model)$R_max
+```
+
+We can also look how close the density dependent reproduction rate RDD is to the density independent reproduction rate RDI:
+
+
+```{r}
+getRDI(cel_model) / getRDD(cel_model)
+
+```
+Tuning reproduction level
+We now want to adjust the reproduction levels so that the resilience of the species in our model matches expectations.
+
+Exploring yield curves
+To measure the resilience of our species to fishing, we will change the fishing mortality for one species at a time and check how their yields change in response. We keep the fishing mortality for the other species fixed. For our selected species we run through a range of fishing mortalities. For each fishing mortality we run the projection until the system has settled down to a new steady state. Then we calculates the yield in that steady state. After doing that for all fishing mortalities we can plot all the results in a graph showing yield on the y axis versus fishing mortality F on the x axis. The plotYieldVsF() function does all that for us. Here we plot the yield curve for haddock:
+
+```{r}
+plotYieldVsF(cel_model, species = "Pacific_Herring_All", 
+             F_range = seq(0.01, 0.15, 0.01))
+```
+Convergence was achieved in 7.5 years.
+F = 0.03 - maximum - otherwise animals don't have enough food
+
+BUT
+pacific herring FMSY = 
+0.54, 0.78, 0.45, 0.55, 0.56 https://waves-vagues.dfo-mpo.gc.ca/library-bibliotheque/40685147.pdf
+
+
+We refer to the yield achieved in the steady state as the sustainable yield (SY) because it can be sustained indefinitely. The sustainable yield for this species has a maximum (MSY) at a fishing mortality of about 0.3. We refer to this value as FMSY. This is close enough to the value of 0.35 that is given for FMSY in the ICES advice for our haddock stock.
+
+Next we look at perch, for which the DFO advice gives a value for FMSY of only 0.109 or 0.091
+https://oceana.ca/wp-content/uploads/sites/24/canadas_marine_fisheries_low-res_final.pdf
+```{r}
+plotYieldVsF(cel_model, species = "Perch", 
+             F_range = seq(0.01, 0.2, 0.02))
+```
+
+
+
+
+```{r}
+getReproductionLevel(cel_model)["Perch"]
+# First we save current reproduction level into a vector 
+rep_level <- getReproductionLevel(cel_model)
+# then we replace our species' reproduction level with a new value 
+rep_level["Perch"] <- 0
+# and assign it back to the model 
+cel_model <- setBevertonHolt(cel_model, 
+                             reproduction_level = rep_level)
+
+# and plot F curves again
+plotYieldVsF(cel_model, species = "Perch", 
+               F_range = seq(0.01, 0.2, 0.02))
+```
+
+
+
+
+
+```{r}
+
+```
+
+
 
 ```{r}
 

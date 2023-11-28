@@ -285,14 +285,79 @@ write.csv(df1, "C:/Users/vtulloch/Dropbox/UBC/Projects/Orca_salmon_modelling/07_
 
 
 
+### TUNE TO DIET MORE????
 
 
 
 
-### CHANGING z0 to defaults?
+```{r}
+cel_model<-testpars
+cel_model <- scaleDownBackground(cel_model, factor = 1/2)
+plotFeedingLevel(cel_model)
+plotlySpectra(cel_model, power = 2, total = TRUE)
+```
+
+The resource has increased by a factor of 2, even if this is not very noticeable on this logarithmic y axis. But we are now no longer in steady state. As always after we have made a modification, we need to run the dynamics to get back to steady state. But before we do that, we also want to match the growth rates again because they will of course have increased by increasing the resource abundance. So we do
 
 
-#plotDeath(cur_model, proportion = T)
+```{r}
+cel_model <- cel_model |> matchGrowth() |> steady()
+plotBiomassVsSpecies(cel_model)
+
+```
+
+
+```{r}
+cel_model <- cel_model |> matchGrowth() |> steady()
+plotFeedingLevel(cel_model)
+```
+
+
+```{r}
+plotGrowthCurves(cel_model, species_panel = TRUE)
+plotFeedingLevel(cel_model)
+plotResourcePred(cel_model, proportion = T)
+#getReproductionLevel(cel_model)
+plotDiet(cel_model)
+getRDI(cel_model)/getRDD(cel_model)
+```
+
+
+```{r}
+
+cel_model <- tuneParams(cel_model)
+
+```
+
+```{r}
+#species_params(params4) |> select(biomass_observed)
+
+# run without fishing
+sim <- project(cel_model, t_max = 100, effort =0, t_save=3)
+
+plot(sim)
+animateSpectra(sim, total = TRUE, power = 1)#, 
+               #ylim = c(1e-8, NA), wlim = c(1e-3, NA))
+
+#species_params(params4) 
+
+
+
+```
+
+
+```{r}
+saveParams(cel_model, "bestmodel_231127_nofishing_tuneparams.rds")
+
+```
+
+```{r}
+
+
+```
+
+
+
 
 
 ```{r}
@@ -302,12 +367,9 @@ write.csv(df1, "C:/Users/vtulloch/Dropbox/UBC/Projects/Orca_salmon_modelling/07_
 
 
 
-```{r}
-plotGrowthCurves(tuned_params3, species_panel = TRUE)
-plotFeedingLevel(tuned_params3)
-plotResourcePred(tuned_params3, proportion = T)
-getReproductionLevel(tuned_params3)
-```
+
+
+
 
 
 
